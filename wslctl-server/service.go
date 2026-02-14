@@ -1,6 +1,7 @@
 package wslctl_server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -31,10 +32,19 @@ func (service *Service) GetDescription() string {
 	return service.description
 }
 
-func (service *Service) Execute(args []string, requests <-chan svc.ChangeRequest, status chan<- svc.Status) (bool, uint32) {
+func (service *Service) Execute(
+	args []string,
+	requests <-chan svc.ChangeRequest,
+	status chan<- svc.Status,
+) (bool, uint32) {
+
 	const cmdsAccepted = svc.AcceptStop | svc.AcceptShutdown
 
 	status <- svc.Status{State: svc.StartPending}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	status <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
 
 	elog, err := eventlog.Open(service.name)
@@ -45,26 +55,23 @@ func (service *Service) Execute(args []string, requests <-chan svc.ChangeRequest
 
 	elog.Info(1, "Service started")
 
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
+	// Start your daemon logic here
+	go service.run(ctx, elog)
 
-	stop := false
-
-	for !stop {
+	for {
 		select {
-		case <-ticker.C:
-			elog.Info(1, "hello")
 		case req := <-requests:
 			switch req.Cmd {
 			case svc.Stop, svc.Shutdown:
-				stop = true
+				elog.Info(1, "Shutdown requested")
+				cancel()
+				status <- svc.Status{State: svc.StopPending}
+				return false, 0
 			}
+		case <-ctx.Done():
+			return false, 0
 		}
 	}
-
-	status <- svc.Status{State: svc.StopPending}
-	elog.Info(1, "Service stopped")
-	return false, 0
 }
 
 func (service *Service) register(m *mgr.Mgr) error {
@@ -113,9 +120,10 @@ func (service *Service) start(_ *mgr.Mgr, s *mgr.Service) error {
 		return err
 	}
 
-	if err := waitForState(s, svc.Running, defaultTimeout, defaultWaitTime); err != nil {
-		return err
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	_ = waitForState(ctx, s, svc.Running, defaultWaitTime)
 
 	log.Println("Service started successfully")
 	return nil
@@ -134,11 +142,32 @@ func (service *Service) Stop() error {
 	return service.withMgrAndService(service.stop)
 }
 
+func (service *Service) run(ctx context.Context, elog *eventlog.Log) {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			elog.Info(1, "Service stopped")
+			return
+		case <-ticker.C:
+			elog.Info(1, "hello")
+		}
+	}
+}
+
 func (service *Service) unregister(_ *mgr.Mgr, s *mgr.Service) error {
 	status, err := s.Query()
 	if err == nil && status.State == svc.Running {
 		_, _ = s.Control(svc.Stop)
-		_ = waitForState(s, svc.Stopped, defaultTimeout, defaultWaitTime)
+
+		ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+		defer cancel()
+
+		if err := waitForState(ctx, s, svc.Stopped, defaultWaitTime); err != nil {
+			return err
+		}
 	}
 
 	if err := s.Delete(); err != nil {
@@ -180,19 +209,32 @@ func (service *Service) withMgrAndService(fn func(m *mgr.Mgr, s *mgr.Service) er
 const defaultTimeout = 30 * time.Second
 const defaultWaitTime = 500 * time.Millisecond
 
-func waitForState(s *mgr.Service, desired svc.State, timeout time.Duration, waitTime time.Duration) error {
-	deadline := time.Now().Add(timeout)
+func waitForState(
+	ctx context.Context,
+	s *mgr.Service,
+	desired svc.State,
+	waitTime time.Duration,
+) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
-	for time.Now().Before(deadline) {
 		status, err := s.Query()
 		if err != nil {
 			return err
 		}
+
 		if status.State == desired {
 			return nil
 		}
-		time.Sleep(waitTime)
-	}
 
-	return fmt.Errorf("timeout waiting for service state %v", desired)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(waitTime):
+		}
+	}
 }
