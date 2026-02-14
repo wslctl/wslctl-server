@@ -43,20 +43,31 @@ func main() {
 
 	isService, err := svc.IsWindowsService()
 	if err != nil {
-		return
+		log.Fatalf("Failed to check if running as a service: %v", err)
 	}
 
 	if isService {
-		svc.Run(service.GetName(), service)
+		// Running as a Windows service
+		err = svc.Run(service.GetName(), service)
+		if err != nil {
+			log.Fatalf("Failed to run as service: %v", err)
+		}
 	} else {
+		// Running in debug mode
 		fmt.Println("Running in debug mode (Ctrl+C to exit)")
 		elog, err := eventlog.Open(service.GetName())
-		if err == nil {
-			defer elog.Close()
-			for {
-				elog.Info(1, "hello (debug)")
-				time.Sleep(1 * time.Minute)
-			}
+		if err != nil {
+			log.Fatalf("Failed to open event log: %v", err)
+		}
+		defer elog.Close()
+
+		// Start pipe server even in debug mode
+		go service.RunPipeServer(&eventlog.Log{})
+
+		// Simulate service running in debug mode
+		for {
+			elog.Info(1, "hello (debug)")
+			time.Sleep(1 * time.Minute)
 		}
 	}
 }

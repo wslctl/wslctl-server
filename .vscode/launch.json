@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Program",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}",
+      "args": [],
+      "env": {},
+      "showLog": true,
+      "cwd": "${workspaceFolder}",
+      "buildFlags": "",
+      "preLaunchTask": "build"
+    },
+    {
+      "name": "Attach to Process",
+      "type": "go",
+      "request": "attach",
+      "mode": "remote",
+      "processId": "${command:pickProcess}",
+      "showLog": true
+    }
+  ]
+}

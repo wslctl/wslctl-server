@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "go",
+      "args": [
+        "build",
+        "-o",
+        "wslctl-server.exe",
+        "./"  // Make sure this points to your Go code's main directory
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$go"],
+      "detail": "Generated task to build Go program"
+    }
+  ]
+}

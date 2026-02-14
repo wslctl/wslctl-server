@@ -3,12 +3,14 @@ package wslctl_server
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"time"
 
 	"github.com/Microsoft/go-winio"
+	"github.com/ubuntu/gowsl"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/eventlog"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -29,12 +31,12 @@ func NewService(name, description string) *Service {
 	return &Service{name: name, description: description}
 }
 
-func (service *Service) GetName() string {
-	return service.name
+func (s *Service) GetName() string {
+	return s.name
 }
 
-func (service *Service) GetDescription() string {
-	return service.description
+func (s *Service) GetDescription() string {
+	return s.description
 }
 
 // ---------------- Windows Service Execute ----------------
@@ -105,13 +107,16 @@ func (s *Service) runPipeServer(ctx context.Context, elog *eventlog.Log) {
 		MessageMode:        true,
 	}
 
+	elog.Info(1, "Attempting to create pipe server")
+
 	listener, err := winio.ListenPipe(pipeName, config)
 	if err != nil {
 		elog.Error(1, fmt.Sprintf("Named pipe listen failed: %v", err))
 		return
 	}
 	defer listener.Close()
-	elog.Info(1, "Named pipe server started")
+
+	elog.Info(1, `Named pipe server started and listening on \\.\pipe\wslctl`)
 
 	for {
 		select {
@@ -127,21 +132,95 @@ func (s *Service) runPipeServer(ctx context.Context, elog *eventlog.Log) {
 			continue
 		}
 
-		go s.handlePipeConnection(conn, elog)
+		go s.handlePipeConnection(ctx, conn, elog)
 	}
 }
 
-func (s *Service) handlePipeConnection(conn net.Conn, elog *eventlog.Log) {
+func (s *Service) handlePipeConnection(ctx context.Context, conn net.Conn, elog *eventlog.Log) {
 	defer conn.Close()
+
+	// Create a reader for the pipe connection
 	reader := bufio.NewReader(conn)
 	msg, _ := reader.ReadString('\n')
 
+	// Handle the incoming messages
 	switch msg {
 	case "hello\n":
 		conn.Write([]byte("hello from wslctl-server\n"))
 		elog.Info(1, "Responded to hello request")
+
+	case "list\n":
+		s.handleList(ctx, conn, elog)
+
 	default:
 		conn.Write([]byte("unknown command\n"))
+	}
+}
+
+// ---------------- List Endpoint ----------------
+
+func (s *Service) handleList(ctx context.Context, conn net.Conn, elog *eventlog.Log) {
+	// Use gowsl to list installed distros
+	distros, err := gowsl.RegisteredDistros(ctx)
+	if err != nil {
+		msg := fmt.Sprintf("{\"error\": \"%v\"}\n", err)
+		conn.Write([]byte(msg))
+		elog.Error(1, fmt.Sprintf("Failed to list distros: %v", err))
+		return
+	}
+
+	// Convert to simple array of names
+	names := make([]string, len(distros))
+	for i, d := range distros {
+		names[i] = d.Name()
+	}
+
+	resp, err := json.Marshal(names)
+	if err != nil {
+		msg := fmt.Sprintf("{\"error\": \"%v\"}\n", err)
+		conn.Write([]byte(msg))
+		elog.Error(1, fmt.Sprintf("JSON marshal error: %v", err))
+		return
+	}
+
+	conn.Write(append(resp, '\n'))
+	elog.Info(1, fmt.Sprintf("Returned list of %d distros", len(names)))
+}
+
+func (s *Service) RunPipeServer(eventLog *eventlog.Log) {
+	// Create a cancellable context for the pipe server
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	config := &winio.PipeConfig{
+		SecurityDescriptor: "D:P(A;;GA;;;BA)", // Administrators only
+		MessageMode:        true,
+	}
+
+	listener, err := winio.ListenPipe(pipeName, config)
+	if err != nil {
+		eventLog.Error(1, fmt.Sprintf("Named pipe listen failed: %v", err))
+		return
+	}
+	defer listener.Close()
+	eventLog.Info(1, `Named pipe server started and listening on \\.\pipe\wslctl`)
+
+	for {
+		select {
+		case <-ctx.Done():
+			eventLog.Info(1, "Pipe server shutting down")
+			return
+		default:
+		}
+
+		conn, err := listener.Accept()
+		if err != nil {
+			eventLog.Error(1, fmt.Sprintf("Pipe accept error: %v", err))
+			continue
+		}
+
+		// Pass the context to the connection handler
+		go s.handlePipeConnection(ctx, conn, eventLog)
 	}
 }
 
