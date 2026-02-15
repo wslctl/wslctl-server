@@ -15,6 +15,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func loadYaml(filePath string) (any, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("Error opening YAML file: %v", err)
+	}
+	defer file.Close()
+
+	var data any
+	decoder := yaml.NewDecoder(file)
+	err = decoder.Decode(&data)
+	if err != nil {
+		return nil, fmt.Errorf("Error decoding YAML file: %v", err)
+	}
+
+	return data, nil
+}
+
 func main() {
 	service := wslctl_server.NewService("wslctl-server", "WSL Control Server")
 
@@ -43,20 +60,12 @@ func main() {
 			}
 			return
 		case "test":
-			schemaFile, err := os.Open("./schemas/drafts/2026.draft.schema.yaml")
+			yamlSchema, err := loadYaml("./schemas/drafts/2026.draft.schema.yaml")
 			if err != nil {
-				log.Fatalf("Error opening YAML file: %v", err)
-			}
-			defer schemaFile.Close()
-
-			var schemaData any
-			decoder := yaml.NewDecoder(schemaFile)
-			err = decoder.Decode(&schemaData)
-			if err != nil {
-				log.Fatalf("Error decoding YAML file: %v", err)
+				log.Fatal(err)
 			}
 
-			jsonSchema, err := json.Marshal(schemaData)
+			jsonSchema, err := json.Marshal(yamlSchema)
 			if err != nil {
 				log.Fatalf("Error converting YAML to JSON: %v", err)
 			}
@@ -67,17 +76,9 @@ func main() {
 				log.Fatalf("Error loading YAML schema: %v", err)
 			}
 
-			testFile, err := os.Open("./tests/test.yaml")
+			testData, err := loadYaml("./tests/test.yaml")
 			if err != nil {
-				log.Fatalf("Error dopening YAML file: %v", err)
-			}
-			defer testFile.Close()
-
-			var testData any
-			decoder = yaml.NewDecoder(testFile)
-			err = decoder.Decode(&testData)
-			if err != nil {
-				log.Fatalf("Error decoding YAML: %v", err)
+				log.Fatal(err)
 			}
 
 			jsonTestData, err := json.Marshal(testData)
