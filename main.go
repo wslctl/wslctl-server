@@ -1,14 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	wslctl_server "github.com/wslctl/wslctl-server/wslctl-server"
+	"github.com/xeipuuv/gojsonschema"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/eventlog"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -37,6 +41,65 @@ func main() {
 			if err := service.Stop(); err != nil {
 				log.Fatalf("Stop failed: %v", err)
 			}
+			return
+		case "test":
+			schemaFile, err := os.Open("./schemas/drafts/2026.draft.schema.yaml")
+			if err != nil {
+				log.Fatalf("Error opening YAML file: %v", err)
+			}
+			defer schemaFile.Close()
+
+			var schemaData any
+			decoder := yaml.NewDecoder(schemaFile)
+			err = decoder.Decode(&schemaData)
+			if err != nil {
+				log.Fatalf("Error decoding YAML file: %v", err)
+			}
+
+			jsonSchema, err := json.Marshal(schemaData)
+			if err != nil {
+				log.Fatalf("Error converting YAML to JSON: %v", err)
+			}
+
+			schemaLoader := gojsonschema.NewStringLoader(string(jsonSchema))
+			schema, err := gojsonschema.NewSchema(schemaLoader)
+			if err != nil {
+				log.Fatalf("Error loading YAML schema: %v", err)
+			}
+
+			testFile, err := os.Open("./tests/test.yaml")
+			if err != nil {
+				log.Fatalf("Error dopening YAML file: %v", err)
+			}
+			defer testFile.Close()
+
+			var testData any
+			decoder = yaml.NewDecoder(testFile)
+			err = decoder.Decode(&testData)
+			if err != nil {
+				log.Fatalf("Error decoding YAML: %v", err)
+			}
+
+			jsonTestData, err := json.Marshal(testData)
+			if err != nil {
+				log.Fatalf("Error converting YAML to JSON: %v", err)
+			}
+
+			jsonTestLoader := gojsonschema.NewStringLoader(string(jsonTestData))
+			result, err := schema.Validate(jsonTestLoader)
+			if err != nil {
+				log.Fatalf("YAML is invalid according to the schema: %v", err)
+			}
+
+			fmt.Printf("YAML is valid according to the schema: %s\n", strconv.FormatBool(result.Valid()))
+
+			var distros wslctl_server.DistributionsList
+			err = json.Unmarshal(jsonTestData, &distros)
+
+			if len(distros.Distributions) > 0 {
+				fmt.Printf("%v\n", distros)
+			}
+
 			return
 		}
 	}

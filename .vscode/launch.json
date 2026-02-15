@@ -2,12 +2,27 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch Program",
+      "name": "Launch SVC Program",
       "type": "go",
       "request": "launch",
       "mode": "debug",
       "program": "${workspaceFolder}",
       "args": [],
+      "env": {},
+      "showLog": true,
+      "cwd": "${workspaceFolder}",
+      "buildFlags": "",
+      "preLaunchTask": "build"
+    },
+    {
+      "name": "Launch Test Program",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}",
+      "args": [
+        "test"
+      ],
       "env": {},
       "showLog": true,
       "cwd": "${workspaceFolder}",
