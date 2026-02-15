@@ -1,0 +1,95 @@
+# yaml-language-server: $schema=http://127.0.0.1:8000/drafts/2026.draft.schema.yaml
+
+distributions:
+  - metadata:
+      name: wslctl-test-debian
+      version: 2
+      kernel-version: 5.6.9
+      architecture: amd64
+      last-used: "2023-10-05T10:15:30Z"
+      installed-on: "2023-10-05T10:15:30Z"
+    config:
+      networking-mode: NAT
+      integrated-console: true
+      limits:
+        cpus: 3
+        memory:
+          unit: GiB
+          value: 3
+    os:
+      id: debian
+      name: Debian GNU/Linux
+      version:
+        id: "13"
+        codename: trixie
+    user:
+      default: root
+      current: cheeba
+    state: Running
+    system:
+      uptime:
+        current-time: 11:22:33
+        system: 2:50
+        users: 1
+        load-averages:
+          one: 2.7
+          five: 1
+          fifteen: 1.2
+      cpu:
+        cores:
+          count: 3
+          usage:
+            - core: 0
+              usage: 3
+        usage: 50
+      network:
+        interfaces:
+          - name: eth0
+            type: Ethernet
+            speed:
+              unit: MBit/s
+              value: 1000
+            addresses:
+              - mac: 00:14:22:01:23:45
+              - ipv4: 192.168.1.2
+              - ipv6: 2001:0db8:85a3:0000:0000:8a2e:0370:7334
+              - ipv6: '::'
+        routes:
+          - gateway:
+              address: 127.0.3.7
+              interface:
+                name: lo
+        nameservers:
+          - address: 9.9.9.9
+      disk:
+        size:
+          value: 20
+          unit: GiB
+        usage: 300
+        used:
+          unit: GiB
+          value: 30
+        free:
+          unit: GiB
+          value: 10
+        sparse: true
+      memory:
+        size:
+          unit: GiB
+          value: 30
+        usage: 300
+        used:
+          unit: GiB
+          value: 30
+        free:
+          unit: GiB
+          value: 10
+        shared:
+          unit: MiB
+          value: 20
+        cached:
+          unit: MiB
+          value: 10
+        available:
+          unit: GiB
+          value: 60
